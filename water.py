@@ -1,4 +1,5 @@
 #code to simulate the flow of rivers through the terrain
+#to optimise, switch from doing stuff to the front of list to doing stuff at the end
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -33,21 +34,61 @@ water_landscape = np.array([[5,-10,-10,-10,-10,-10,10,-10,-10,-10],
                            ])
 
 test_rainfall = np.array([[0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
-                                    [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
-                                    [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
-                                    [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
-                                    [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
-                                    [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
-                                    [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
-                                    [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
-                                    [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
-                                    [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
-                                    [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
-                                    [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
-                                    ])
+                          [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
+                          [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
+                          [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
+                          [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
+                          [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
+                          [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
+                          [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
+                          [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
+                          [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
+                          [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
+                          [0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1],
+                          ])
 
 test_grid_size = 20000 #side length in metres of grid square
 test_rainfall_time = 2628000 #time in seconds that the precipitation period lasts for, our period is one month = 1/12 of a 365 day year
+
+#create the ocean and generate rivers based on rainfall patterns
+def apply_water(landscape : np.ndarray[float],rainfall : np.ndarray[float],grid_size : float,rainfall_time : float):
+    is_ocean = ocean_fill(landscape) #determine the boundaries of the ocean
+    get_land_indices_in_rank_order(landscape,is_ocean)
+
+#find the indices of all non-ocean tiles in order from tallest to smallest
+def get_land_indices_in_rank_order(landscape : np.ndarray[float],is_ocean : np.ndarray[bool]):
+    landscape = landscape.astype('float') #needs to be a float for the next step
+    landscape[is_ocean] = -np.inf #make all ocean tiles negative infinity so they are ranked last
+    indices_by_elevation = get_ranks_using_sort(landscape)
+    
+
+#determine the ranks using sorting algorithms
+#output will be in descending order
+def get_ranks_using_sort(landscape : np.ndarray[float]):
+    sorted_values = -np.sort(-landscape,axis=None) #negative in front of array to sort indicates we want to sort descending, axis=None indicates we are sorting an unflatened array
+    indices_by_elevation = [] #indices of all non-ocean tiles sorted by height from tallest to shortest
+    last_value = np.inf
+    for value in sorted_values:
+        if(value==-np.inf):
+            break
+        else:
+            if value==last_value:
+                continue #we handle multiple equal elevations all at once,  so skip them when we are going through the sorted list
+            else:
+                last_value = value
+                this_elevation_tile_list = np.where(landscape==value)
+                this_elevation_tile_list =  convert_where_to_indice_pairs(this_elevation_tile_list)
+                for indice in this_elevation_tile_list:
+                    indices_by_elevation.append(indice)
+
+    return indices_by_elevation  
+
+
+
+            
+    
+    
+    
 
 #determine which tiles in a landscape are ocean (altitude below zero and connected to the map edges), return a map of which tiles are ocean
 def ocean_fill(landscape : np.ndarray[float]) -> np.ndarray[bool]:
@@ -123,4 +164,3 @@ def outer_rectangle_ocean(x : int,y : int ,landscape : np.ndarray[float],is_ocea
 def display_landscape(landscape : np.ndarray):
     plt.imshow(landscape,interpolation='nearest')
     plt.show()
-
