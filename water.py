@@ -53,15 +53,15 @@ test_rainfall_time = 2628000 #time in seconds that the precipitation period last
 #create the ocean and generate rivers based on rainfall patterns
 def apply_water(landscape : np.ndarray[float],rainfall : np.ndarray[float],grid_size : float,rainfall_time : float):
     is_ocean = ocean_fill(landscape) #determine the boundaries of the ocean
-    get_land_indices_in_rank_order(landscape,is_ocean)
+    indices_by_elevation = get_land_indices_in_rank_order(landscape,is_ocean)
 
 #find the indices of all non-ocean tiles in order from tallest to smallest
 def get_land_indices_in_rank_order(landscape : np.ndarray[float],is_ocean : np.ndarray[bool]):
     landscape = landscape.astype('float') #needs to be a float for the next step
     landscape[is_ocean] = -np.inf #make all ocean tiles negative infinity so they are ranked last
     indices_by_elevation = get_ranks_using_sort(landscape)
+    return indices_by_elevation
     
-
 #determine the ranks using sorting algorithms
 #output will be in descending order
 def get_ranks_using_sort(landscape : np.ndarray[float]):
@@ -82,13 +82,6 @@ def get_ranks_using_sort(landscape : np.ndarray[float]):
                     indices_by_elevation.append(indice)
 
     return indices_by_elevation  
-
-
-
-            
-    
-    
-    
 
 #determine which tiles in a landscape are ocean (altitude below zero and connected to the map edges), return a map of which tiles are ocean
 def ocean_fill(landscape : np.ndarray[float]) -> np.ndarray[bool]:
