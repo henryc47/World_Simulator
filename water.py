@@ -19,6 +19,21 @@ test_landscape = np.array([[-10,-10,-10,-10,-10,-10,-10,-10,-10,-10],
                            [-10,-10,-10,-10,-10,-10,-10,-10,-10,-10],
                            ])
 
+river_landscape = np.array([[-10,-10,-10,-10,-10,-10,-10,-10,-10,-10],
+                            [-10,-10,-10,-10,-10,-10,-10,-10,-10,-10],
+                            [-10,-10,-10,-10,-10,-10,-10,-10,-10,-10],
+                            [-10,-10,5,4,3,6,9,11,-10,-10],
+                            [-10,-10,155,114,133,163,190,155,-10,-10],
+                            [-10,-10,55,43,33,63,94,55,-10,-10],
+                            [-10,-10,65,18,13,11,8,5,-10,-10],
+                            [-10,-10,45,38,32,58,89,50,-10,-10],
+                            [-10,-10,55,43,33,63,94,55,-10,-10],
+                            [-10,-10,155,114,133,163,190,155,-10,-10],
+                            [-10,-10,-10,-10,-10,-10,-10,-10,-10,-10],
+                            [-10,-10,-10,-10,-10,-10,-10,-10,-10,-10],
+                            ])
+
+
 water_landscape = np.array([[5,-10,-10,-10,-10,-10,10,-10,-10,-10],
                            [-10,-10,-10,-10,-10,-10,-10,-10,-10,-10],
                            [-10,-10,-10,-10,15,10,5,-10,-10,-10],
@@ -52,10 +67,12 @@ test_rainfall_time = 2628000 #time in seconds that the precipitation period last
 
 #create the ocean and generate rivers based on rainfall patterns
 def apply_water(landscape : np.ndarray[float],rainfall : np.ndarray[float],grid_size : float,rainfall_time : float):
+    rainfall_rate = rainfall*((grid_size*grid_size)/rainfall_time) #convert rainfall to m^3/s on a tile
     is_ocean = ocean_fill(landscape) #determine the boundaries of the ocean
     indices_by_elevation = get_land_indices_in_rank_order(landscape,is_ocean)
     creek_flow_fraction,river_flow_fraction,elevation_drop = water_flow_fractions(landscape,is_ocean)
-    return creek_flow_fraction,river_flow_fraction
+    creek_flow,river_flow,incoming_surface_water = water_flow(rainfall_rate,creek_flow_fraction,river_flow_fraction,indices_by_elevation)
+    return creek_flow,river_flow,incoming_surface_water
 
 #determine what fraction of water falling on a tile will travel in each direction
 def water_flow_fractions(landscape : np.ndarray[float],is_ocean : np.ndarray[bool]) -> tuple[np.ndarray[float]]:
@@ -82,30 +99,66 @@ def water_flow_fractions(landscape : np.ndarray[float],is_ocean : np.ndarray[boo
                 #first calculate direction of river flow
                 river_flow_directions = neighbour_elevation_drops.copy()
                 steepest_drop = np.max(river_flow_directions) #what is the steepest drop to any of our neighbours
-                river_flow_directions[river_flow_directions<steepest_drop]=0 #find the location of these steepest drops
-                local_river_flow_fraction = river_flow_directions/np.sum(river_flow_directions) #river flow is divided up evenly between each of these potential rivers
-                #print(' river flow directions = ',river_flow_directions) #TESTING
-                #print(' neighbour elevation drops = ',neighbour_elevation_drops) #TESTING
-                #print(' local river flow fraction = ', local_river_flow_fraction) #TESTING
-                river_flow_fraction[y,x,:] = local_river_flow_fraction #store the calculated river flow
-                #print('river flow fraction ',river_flow_fraction)
-                #now calculate direction of creek flow
-                creek_flow_directions = neighbour_elevation_drops.copy()
-                creek_flow_directions[creek_flow_directions<0] = 0 #water only ever flows downhill
-                local_creek_flow_fraction = creek_flow_directions/np.sum(creek_flow_directions) #creek flow is divided up between lower tiles proportional to the elevation drop
-                #print(' creek flow directions = ',creek_flow_directions) #TESTING
-                #print(' local creek flow fraction = ', local_creek_flow_fraction) #TESTING
-                creek_flow_fraction[y,x,:] = local_creek_flow_fraction #store the calculated creek flow
-                #print('creek flow fraction ',creek_flow_fraction)
+                if(steepest_drop<0): #we are a local minimum (a lake shall form!) figure out how to handle lakes later
+                    #print('is lake!') #TESTING
+                    continue
+                else:
+                    river_flow_directions[river_flow_directions<steepest_drop]=0 #find the location of these steepest drops
+                    local_river_flow_fraction = river_flow_directions/np.sum(river_flow_directions) #river flow is divided up evenly between each of these potential rivers
+                    #print(' river flow directions = ',river_flow_directions) #TESTING
+                    #print(' neighbour elevation drops = ',neighbour_elevation_drops) #TESTING
+                    #print(' local river flow fraction = ', local_river_flow_fraction) #TESTING
+                    river_flow_fraction[y,x,:] = local_river_flow_fraction #store the calculated river flow
+                    #print('river flow fraction ',river_flow_fraction)
+                    #now calculate direction of creek flow
+                    creek_flow_directions = neighbour_elevation_drops.copy()
+                    creek_flow_directions[creek_flow_directions<0] = 0 #water only ever flows downhill
+                    print('creek flow directions',creek_flow_directions) #TESTING
+                    local_creek_flow_fraction = creek_flow_directions/np.sum(creek_flow_directions) #creek flow is divided up between lower tiles proportional to the elevation drop
+                    #print(' creek flow directions = ',creek_flow_directions) #TESTING
+                    #print(' local creek flow fraction = ', local_creek_flow_fraction) #TESTING
+                    creek_flow_fraction[y,x,:] = local_creek_flow_fraction #store the calculated creek flow
+                    #print('creek flow fraction ',creek_flow_fraction)
     
     return creek_flow_fraction,river_flow_fraction,elevation_drop
 
-def water_flow(rainfall : np.ndarray[float],creek_flow_fractions : np.ndarray[float], river_flow_fractions : np.ndarray[float],indices_by_elevation : list[list[int]],grid_size : float,rainfall_time : float):
+def water_flow(rainfall : np.ndarray[float],creek_flow_fractions : np.ndarray[float], river_flow_fractions : np.ndarray[float],indices_by_elevation : list[list[int]]) -> tuple[np.ndarray[float]]:
     dimensions = rainfall.shape
     height = dimensions[0]
     width = dimensions[1]
-    creek_flow = np.full((height,width,8),0) #map for each tile and each of the 8 directions from that tile, represents water flow (in m^3/s) for surface/subsurface and minor flows
-    river_flow = np.full((height,width,8),0) #map for each tile and each of the 8 directions, represents water flow (in m^3/s) for established rivers 
+    neighbour_offsets = [[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[-1,-1],[-1,0],[-1,1]] #offset for each neighbour, counter-clockwise from left
+    creek_flow = np.full((height,width,8),0,dtype='float') #map for each tile and each of the 8 directions from that tile, represents water flow (in m^3/s) for surface/subsurface and minor flows
+    river_flow = np.full((height,width,8),0,dtype='float') #map for each tile and each of the 8 directions, represents water flow (in m^3/s) for established rivers
+    incoming_surface_water = np.full((height,width),0,dtype='float') #amount of water entering each tile from surface flows, combination of creek and river flows into that tile (in m^3/s) 
+    #go through every tile from highest to lowest
+    for indice in indices_by_elevation:
+        #extract information about local tile
+        local_y = indice[0]
+        local_x = indice[1]
+        local_rainfall = rainfall[local_y,local_x] #local rainfall, m^3/s/tile
+        local_incoming_surface_water = incoming_surface_water[local_y,local_x]
+        local_creek_flow_fractions = creek_flow_fractions[local_y,local_x,:]
+        local_river_flow_fractions = river_flow_fractions[local_y,local_x,:]
+        for i,neighbour in enumerate(neighbour_offsets):
+            neighbour_y = local_y + neighbour[0]
+            neighbour_x = local_x + neighbour[1]
+            #now we must check if the neighbour is within the bounds
+            if (neighbour_x>=0 and neighbour_x<width) and (neighbour_y>=0 and neighbour_y<height): #if neighbour within bounds
+                local_creek_flow_fraction = local_creek_flow_fractions[i]
+                local_river_flow_fraction = local_river_flow_fractions[i]
+                local_outgoing_creek_flow = local_rainfall*local_creek_flow_fraction #flow going to this neighbour by creek
+                local_outgoing_river_flow = local_incoming_surface_water*local_river_flow_fraction #flow going to this neighbour by river
+                incoming_surface_water[neighbour_y,neighbour_x] = incoming_surface_water[neighbour_y,neighbour_x] + local_outgoing_creek_flow + local_outgoing_river_flow #update incoming surface water to the neighbour
+                creek_flow[local_y,local_x,i] = local_outgoing_creek_flow #store the creek flow to this neighbour
+                river_flow[local_y,local_x,i] = local_outgoing_river_flow #store the river flow to this neighbour            
+            else:
+                continue #I think we do need to do something to handle out of area flows, but not sure what it should be yet (eventually we will have a globe so will be a moot point)
+    
+    return creek_flow,river_flow,incoming_surface_water
+    
+
+
+
 
 #calculate the elevation difference from each tile to each of it's 8 neighbours (positive is downhill, negative is uphill)
 def calculate_elevation_drop(landscape : np.ndarray[float],is_ocean :  np.ndarray[bool]) -> np.ndarray[float]:
