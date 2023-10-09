@@ -1,21 +1,18 @@
 import pygame
 import sys
+import config
 import tiles
+import water
+import numpy as np
 
-#screen config constants
-WIN_WIDTH = 1920 #HD 16:9
-WIN_HEIGHT = 1080 #HD 16:9
-#colour config constants
-WHITE = (255,255,255)
-#other graphical constants
-FPS = 60
+
 
 #class to store the whole application
 class Application:
     #initialise the application
     def __init__(self):
         pygame.init() #activate pygame
-        self.screen = pygame.display.set_mode((WIN_WIDTH,WIN_HEIGHT)) #create the screen
+        self.screen = pygame.display.set_mode((config.WIN_WIDTH,config.WIN_HEIGHT)) #create the screen
         self.clock = pygame.time.Clock()
         self.running = True #the application is running
     
@@ -31,7 +28,7 @@ class Application:
     def new(self):
         self.playing = True
         self.all_sprites = pygame.sprite.LayeredUpdates()
-        self.tiles = pygame.sprite.LayeredUpdates()
+        self.tiles = pygame.sprite.Group()
     
     #update the application
     def update(self):
@@ -39,9 +36,9 @@ class Application:
 
     #draw the application
     def draw(self):
-        self.screen.fill(WHITE)
+        self.screen.fill(config.WHITE)
         self.all_sprites.draw(self.screen)
-        self.clock.tick(FPS)
+        self.clock.tick(config.FPS)
         pygame.display.update()
 
     #main loop
@@ -57,10 +54,28 @@ class Application:
     def intro_screen(self):
         pass
 
+    #create the main map
+    def create_map(self):
+        map = water.water_landscape
+        self.create_tiles_from_elevation(map)
+        
+
+
+    def create_tiles_from_elevation(self,map):
+        for x,row in enumerate(map):
+            for y,cell in enumerate(row):
+                if cell>0:
+                    type = 'Land'
+                else:
+                    type = 'Ocean'
+                tile = tiles.Tile(self,x,y,type)
+                self.tiles.add(tile)
+
 def main():
     a = Application()
     a.intro_screen()
     a.new()
+    a.create_map()
     while a.running:
         a.main()
         a.end_application()
